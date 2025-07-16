@@ -1,0 +1,65 @@
+name: 自动更新PAC文件
+
+on:
+  # schedule:
+    # 每24小时运行一次
+    # - cron: '0 0 * * *'
+  # 允许手动触发工作流
+  workflow_dispatch:
+
+jobs:
+  update-pac:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v3
+        
+      - name: 设置Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+          
+      - name: 下载gfw-pac项目
+        run: |
+          git clone https://github.com/zhiyi7/gfw-pac.git
+          cd gfw-pac
+          
+      - name: 安装依赖
+        run: |
+          cd gfw-pac
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          # 如果没有requirements.txt，可能需要安装一些基本依赖
+          pip install requests
+          
+      - name: 复制自定义文件并生成PAC文件
+        run: |
+          # 复制自定义文件到gfw-pac目录
+          cp pac/proxy-domains.txt gfw-pac/
+          cp pac/direct-domains.txt gfw-pac/
+          cp pac/local-tlds.txt gfw-pac/
+          
+          # 进入gfw-pac目录并生成PAC文件
+          cd gfw-pac
+          python gfw-pac.py -f gfw.pac -p "PROXY 127.0.0.1:18888" --proxy-domains=proxy-domains.txt --direct-domains=direct-domains.txt --localtld-domains=local-tlds.txt --ip-file=cidrs-cn.txt
+      
+      - name: 设置版本号
+        id: set_version
+        run: |
+          echo "version=v0.0.${{ github.run_number }}" >> $GITHUB_ENV
+          
+      - name: 创建Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.version }}
+          name: ${{ env.version }}
+          body: |
+            自动更新的PAC文件
+            版本号: ${{ env.version }}
+          draft: false
+          prerelease: false
+          files: gfw-pac/gfw.pac 
